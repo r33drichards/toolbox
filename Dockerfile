@@ -78,8 +78,13 @@ COPY --from=rootfs /rootfs /
 USER 1000:1000
 EXPOSE 3000
 
+# NOTE: --sse-port (legacy HTTP+SSE transport: GET /sse + POST /message),
+# not --http-port. The bundled rmcp 0.1.5 "streamable" transport answers
+# POSTed requests with an empty 200 and delivers results on the GET stream,
+# which current MCP clients (e.g. Claude's connectors) read as "no tools".
+# The SSE transport is the spec generation those clients fully support.
 ENTRYPOINT ["/usr/local/bin/mcp-v8", \
-  "--http-port", "3000", \
+  "--sse-port", "3000", \
   "--stateless", \
   "--heap-memory-max", "1024", \
   "--execution-timeout", "300", \

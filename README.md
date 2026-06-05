@@ -25,8 +25,20 @@ docker run -p 3000:3000 toolbox
 docker compose up --build
 ```
 
-- MCP endpoint (Streamable HTTP): `http://localhost:3000/mcp`
+- MCP endpoint (HTTP+SSE transport): `http://localhost:3000/sse`
 - Plain REST: `POST /api/exec`, `GET /api/executions/{id}`, `/swagger-ui`
+
+> Why SSE and not the `/mcp` streamable transport? The rmcp 0.1.5 bundled in
+> mcp-v8 answers POSTed requests with an empty 200 and delivers results on
+> the GET stream — current MCP clients (e.g. Claude connectors) read that as
+> "no tools available". The SSE transport is the generation those clients
+> fully support. `client.mjs` speaks both.
+
+Add to Claude Code:
+
+```sh
+claude mcp add --transport sse toolbox https://<your-domain>/sse
+```
 
 ## Use
 
@@ -60,7 +72,7 @@ prepended automatically.
 ### Tests
 
 ```sh
-node test.mjs        # MCP_URL=http://localhost:3000/mcp by default
+node test.mjs        # MCP_URL=http://localhost:3000/sse by default
 ```
 
 32 checks: MCP protocol + TypeScript stripping, fetch-anywhere, bootstrap

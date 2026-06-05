@@ -3,7 +3,7 @@
 //
 //   node test.mjs
 //
-// Env: MCP_URL            (default http://localhost:3000/mcp)
+// Env: MCP_URL            (default http://localhost:3000/sse)
 //      LANG_BOOTSTRAP_URL (default http://127.0.0.1:8090/bootstrap.js — the
 //                          URL the SERVER's runtime fetches the bootstrap from)
 import { readFileSync } from 'node:fs';

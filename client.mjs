@@ -10,7 +10,7 @@
 //
 // Library:
 //   import { McpClient } from './client.mjs';
-//   const c = new McpClient('http://localhost:3000/mcp');
+//   const c = new McpClient('http://localhost:3000/sse');
 //   await c.initialize();
 //   const tools = await c.listTools();
 //   const { output } = await c.runJs('console.log(1 + 1)');
@@ -21,29 +21,43 @@
 //   node client.mjs run 'console.log(42)'      # run code, print output
 //   node client.mjs run-file ./script.js       # run a file
 //   echo 'console.log(1)' | node client.mjs run -
-// Env: MCP_URL (default http://localhost:3000/mcp)
+// Env: MCP_URL (default http://localhost:3000/sse)
 //      LANG_BOOTSTRAP_URL — when set, `run` prepends a loader that fetches
 //      and evals the languages bootstrap (use http://127.0.0.1:8090/bootstrap.js
 //      for the docker image; the URL is fetched BY THE SERVER's runtime).
 
 import { readFileSync } from 'node:fs';
 
-function parseSseFrames(buf, onData) {
-  // returns unconsumed remainder
+function parseSseFrames(buf, onEvent) {
+  // returns unconsumed remainder; onEvent(eventName, data)
   let idx;
   while ((idx = buf.indexOf('\n\n')) !== -1) {
     const frame = buf.slice(0, idx);
     buf = buf.slice(idx + 2);
+    let event = 'message';
+    const datas = [];
     for (const line of frame.split('\n')) {
-      if (line.startsWith('data:')) onData(line.slice(5).trim());
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) datas.push(line.slice(5).trim());
     }
+    if (datas.length) onEvent(event, datas.join('\n'));
   }
   return buf;
 }
 
 export class McpClient {
-  constructor(url = process.env.MCP_URL || 'http://localhost:3000/mcp') {
+  /**
+   * Supports both mcp-v8 transports:
+   *  - legacy HTTP+SSE (URL path ends in /sse): GET /sse → `endpoint` event
+   *    names the POST URL; all responses arrive on the stream. This is the
+   *    transport current MCP clients (Claude connectors) fully support.
+   *  - rmcp 0.1.5 "streamable" (/mcp): initialize answers inline on the
+   *    POST; subsequent responses arrive on a standing GET stream.
+   */
+  constructor(url = process.env.MCP_URL || 'http://localhost:3000/sse') {
     this.url = url;
+    this.transport = new URL(url).pathname.replace(/\/$/, '').endsWith('/sse') ? 'sse' : 'http';
+    this.postUrl = null; // sse transport: set by the `endpoint` event
     this.sessionId = null;
     this.nextId = 1;
     this.pending = new Map(); // id -> {resolve, reject}
@@ -85,21 +99,37 @@ export class McpClient {
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    let resolveEndpoint, rejectEndpoint;
+    const endpointReady = new Promise((res, rej) => { resolveEndpoint = res; rejectEndpoint = rej; });
     (async () => {
       try {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
           buf += decoder.decode(value, { stream: true });
-          buf = parseSseFrames(buf, (d) => this.#dispatch(d));
+          buf = parseSseFrames(buf, (event, data) => {
+            if (event === 'endpoint') {
+              this.postUrl = new URL(data, this.url).href;
+              resolveEndpoint();
+            } else {
+              this.#dispatch(data);
+            }
+          });
         }
       } catch (e) {
         if (e.name !== 'AbortError') {
+          rejectEndpoint(e);
           for (const { reject } of this.pending.values()) reject(e);
           this.pending.clear();
         }
       }
     })();
+    if (this.transport === 'sse') {
+      await Promise.race([
+        endpointReady,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout waiting for SSE endpoint event')), 15000).unref?.()),
+      ]);
+    }
   }
 
   /** POST a JSON-RPC message; resolve from inline body or the GET stream. */
@@ -120,7 +150,7 @@ export class McpClient {
       });
     }
 
-    const resp = await fetch(this.url, {
+    const resp = await fetch(this.transport === 'sse' ? this.postUrl : this.url, {
       method: 'POST',
       headers: this.#headers({ 'content-type': 'application/json' }),
       body: JSON.stringify(body),
@@ -132,11 +162,11 @@ export class McpClient {
       throw new Error(`${method} -> HTTP ${resp.status}: ${await resp.text()}`);
     }
 
-    // Inline body (initialize does this): SSE-framed or plain JSON.
+    // Inline body (streamable initialize does this): SSE-framed or plain JSON.
     const ctype = resp.headers.get('content-type') || '';
     if (ctype.includes('text/event-stream')) {
       const text = await resp.text();
-      parseSseFrames(text.endsWith('\n\n') ? text : text + '\n\n', (d) => this.#dispatch(d));
+      parseSseFrames(text.endsWith('\n\n') ? text : text + '\n\n', (_e, d) => this.#dispatch(d));
     } else if (ctype.includes('application/json')) {
       const text = await resp.text();
       if (text.trim()) this.#dispatch(text);
@@ -146,13 +176,19 @@ export class McpClient {
   }
 
   async initialize() {
+    if (this.transport === 'sse') {
+      // stream first: it names the POST endpoint (with session id)
+      await this.#openStream();
+    }
     const result = await this.rpc('initialize', {
       protocolVersion: '2025-03-26',
       capabilities: {},
       clientInfo: { name: 'languages-light-client', version: '1.0.0' },
     });
     await this.rpc('notifications/initialized', undefined, { notification: true });
-    await this.#openStream();
+    if (this.transport !== 'sse') {
+      await this.#openStream();
+    }
     this.serverInfo = result.serverInfo;
     return result;
   }
