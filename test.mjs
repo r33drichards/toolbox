@@ -64,9 +64,9 @@ const suites = {
   async bootstrap() {
     const r = await runJson(`console.log('RESULT:' + JSON.stringify(languages()));`);
     check('bootstrap loads', r.status === 'completed', r.error);
-    check('all 7 languages in manifest', r.json && Object.keys(r.json.helpers).length === 7, r.output);
+    check('all 8 languages in manifest', r.json && Object.keys(r.json.helpers).length === 8, r.output);
     const w = r.json?.wasmModulesPresent || {};
-    check('all 4 wasm modules preloaded', w.picat && w.tla && w.minizinc && w.autolisp, JSON.stringify(w));
+    check('all 5 wasm modules preloaded', w.picat && w.tla && w.minizinc && w.autolisp && w.lua, JSON.stringify(w));
     check('mermaid loaded without error', !r.json?.loadErrors, JSON.stringify(r.json));
   },
 
@@ -179,6 +179,40 @@ INVARIANTS
       const a = await autolisp('(+ 1 2 3)');
       console.log('RESULT:' + JSON.stringify(a.result));`);
     check('autolisp evaluates arithmetic', String(arith.json).includes('6'), arith.output || arith.error);
+  },
+
+  // ── Lua ───────────────────────────────────────────────────────────────
+  async lua() {
+    const hello = await runJson(`
+      const r = await lua('print("hello lua", 1 + 2)');
+      console.log('RESULT:' + JSON.stringify(r));`);
+    check('lua print captured to stdout', hello.json?.stdout === 'hello lua\t3\n' && !hello.json?.error, hello.output || hello.error);
+
+    const ret = await runJson(`
+      const r = await lua(\`
+        local t = {}
+        for i = 1, 5 do t[i] = i * i end
+        return { sum = 1 + 2 + 3, squares = t, msg = string.upper("ok") }
+      \`);
+      console.log('RESULT:' + JSON.stringify(r));`);
+    check('lua return value marshalled to JSON', ret.json?.result?.sum === 6
+      && JSON.stringify(ret.json?.result?.squares) === JSON.stringify([1, 4, 9, 16, 25])
+      && ret.json?.result?.msg === 'OK', ret.output || ret.error);
+
+    const stdlib = await runJson(`
+      const r = await lua('return math.floor(math.sqrt(144)) + tonumber("8")');
+      console.log('RESULT:' + JSON.stringify(r));`);
+    check('lua stdlib (math/string) works', stdlib.json?.result === 20, stdlib.output || stdlib.error);
+
+    const bad = await runJson(`
+      const r = await lua('this is not lua $$$');
+      console.log('RESULT:' + JSON.stringify({ hasErr: !!r.error, msg: r.error }));`);
+    check('lua syntax error surfaces', bad.json?.hasErr && /syntax error/.test(bad.json?.msg || ''), bad.output || bad.error);
+
+    const runtime = await runJson(`
+      const r = await lua('error("boom")');
+      console.log('RESULT:' + JSON.stringify({ hasErr: !!r.error, msg: r.error }));`);
+    check('lua runtime error surfaces', runtime.json?.hasErr && /boom/.test(runtime.json?.msg || ''), runtime.output || runtime.error);
   },
 
   // ── JSX ───────────────────────────────────────────────────────────────

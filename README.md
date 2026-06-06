@@ -1,8 +1,8 @@
-# toolbox — an MCP server with seven languages in one container
+# toolbox — an MCP server with eight languages in one container
 
 A Docker image that runs [mcp-js / mcp-v8](https://github.com/r33drichards/mcp-js)
 (a V8 JavaScript MCP server) in **Streamable HTTP MCP mode** with **fetch
-enabled everywhere** and seven language engines loaded into the runtime:
+enabled everywhere** and eight language engines loaded into the runtime:
 
 | helper | engine | kind |
 |---|---|---|
@@ -10,6 +10,7 @@ enabled everywhere** and seven language engines loaded into the runtime:
 | `await tlaplus(spec, opts?)` | TLA+ model checker (supports inline `---- CONFIG ----`) | wasm |
 | `await minizinc(model, {data?, args?})` | MiniZinc 4.4.6 (gecode/chuffed) | wasm |
 | `await autolisp(code)` | acadlisp (returns evaluated result + SVG drawing) | wasm |
+| `await lua(code, opts?)` | Lua 5.4 via [wasmoon](https://github.com/ceifa/wasmoon) (returns value + captured `print`/`io.write`) | wasm |
 | `jsx(source, props?)` | Babel + React 18 server render → HTML | js |
 | `markdown(src)` | marked 11 (GFM) → HTML | js |
 | `await mermaid_parse(src)` | mermaid 9 parse/validate (render needs a real DOM) | js |
@@ -52,6 +53,9 @@ module (read-only on `/opt/languages/`):
 
 const q = await picat('import cp. main => ...');
 console.log(q.stdout);
+
+const lua_res = await lua('print("hi"); return 6 * 7');
+console.log(lua_res.stdout, lua_res.result); // "hi\n" 42
 ```
 
 ### Light client
@@ -75,12 +79,13 @@ prepended automatically.
 node test.mjs        # MCP_URL=http://localhost:3000/sse by default
 ```
 
-32 checks: MCP protocol + TypeScript stripping, fetch-anywhere, bootstrap
+37 checks: MCP protocol + TypeScript stripping, fetch-anywhere, bootstrap
 manifest, Picat (hello / CP 8-queens / SAT / full turtle-quarry planner /
 error paths), TLA+ (pass + invariant violation with trace), MiniZinc
 (satisfy / optimize / UNSAT / error), AutoLISP (SVG entities + princ +
-arithmetic), JSX, Markdown, mermaid (2 diagram types + parse error), and
-3-way concurrency.
+arithmetic), Lua (print capture / table return / stdlib / syntax + runtime
+error), JSX, Markdown, mermaid (2 diagram types + parse error), and 3-way
+concurrency.
 
 ## How it fits together
 
@@ -88,11 +93,11 @@ arithmetic), JSX, Markdown, mermaid (2 diagram types + parse error), and
 Dockerfile            three-stage: node (vendor+generate) → debian (rootfs assembly) → scratch
 fetch.rego            OPA policy: default allow = true  ("fetch anywhere")
 filesystem.rego       OPA policy: read-only fs access to /opt/languages/
-fetch-vendor.sh       pinned downloads (babel, react, marked, mermaid, minizinc, acadlisp)
+fetch-vendor.sh       pinned downloads (babel, react, marked, mermaid, minizinc, wasmoon/lua, acadlisp)
 engines/              vendored Picat + TLA+ wasm builds
 build-bootstrap.mjs   vendor/* + src/* → bootstrap.js (single eval-able script)
 src/polyfills.js      TextDecoder/TextEncoder/URL/performance/DOM-stub for bare deno_core
-src/helpers.js        the seven language helper functions
+src/helpers.js        the eight language helper functions
 client.mjs            light MCP client (library + CLI)
 test.mjs              exhaustive test suite
 examples/turtle_quarry.pi
@@ -101,18 +106,22 @@ examples/turtle_quarry.pi
 The final image is **`FROM scratch`** — just the files: the mcp-v8 release
 binary, the handful of glibc libraries it links against (plus the NSS DNS
 libs and `nsswitch.conf`, without which `fetch()` could not resolve
-hostnames), CA certificates, the four `.wasm` engines, `bootstrap.js`, and
+hostnames), CA certificates, the five `.wasm` engines, `bootstrap.js`, and
 the two Rego policies. No shell, no package manager. The server runs
 directly as PID 1 via an exec-form ENTRYPOINT.
 
-- The four wasm engines are **preloaded by the server** (`--wasm-module
+- The five wasm engines are **preloaded by the server** (`--wasm-module
   name=path:limit`) and appear as precompiled `WebAssembly.Module` globals
-  (`__wasm_picat`, `__wasm_tla`, `__wasm_minizinc`, `__wasm_autolisp`).
-  The helpers instantiate them per call (Picat via Emscripten's
+  (`__wasm_picat`, `__wasm_tla`, `__wasm_minizinc`, `__wasm_autolisp`,
+  `__wasm_lua`). The helpers instantiate them per call (Picat via Emscripten's
   `instantiateWasm` hook, TLA+/acadlisp via wasm-bindgen `initSync({module})`,
   MiniZinc by driving its worker bundle with shimmed `addEventListener`/
   `postMessage`/`fetch` and a temporary `WebAssembly.instantiateStreaming`
-  override).
+  override, Lua by driving wasmoon's Emscripten loader — whose strict build
+  forbids the `instantiateWasm`/`print` hooks — through a `fetch` shim and a
+  pass-through `WebAssembly.instantiateStreaming` override that serves the
+  preloaded module; `print`/`io.write` are redirected inside Lua to capture
+  stdout).
 - MiniZinc's 495KB stdlib `.data` file is embedded in the bootstrap as
   base64 because mcp-v8's `fetch()` decodes bodies as UTF-8 text (lossy for
   binary).
@@ -135,7 +144,7 @@ loading (~1s overhead) is the working configuration.
 
 The scratch image has no shell, so there are no env-var knobs — the full
 command line lives in the exec-form ENTRYPOINT (port 3000, 1024MB V8 heap,
-300s timeout, all four `--wasm-module` flags). To change a flag, override
+300s timeout, all five `--wasm-module` flags). To change a flag, override
 the entrypoint:
 
 ```sh
@@ -145,5 +154,6 @@ docker run -p 4000:4000 --entrypoint /usr/local/bin/mcp-v8 toolbox \
   --wasm-module picat=/opt/languages/picat.wasm:512m \
   --wasm-module tla=/opt/languages/tla_checker.wasm:512m \
   --wasm-module minizinc=/opt/languages/minizinc.wasm:1g \
-  --wasm-module autolisp=/opt/languages/acadlisp.wasm:512m
+  --wasm-module autolisp=/opt/languages/acadlisp.wasm:512m \
+  --wasm-module lua=/opt/languages/lua.wasm:512m
 ```

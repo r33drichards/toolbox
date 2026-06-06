@@ -5,13 +5,14 @@
 //   await tlaplus(spec, options?) -> TLA+ checker result JSON (supports inline ---- CONFIG ---- blocks)
 //   await minizinc(model, opts?)  -> { status, solutions, statistics, stderr, exitCode }
 //   await autolisp(code)          -> { result, output, svg }
+//   await lua(code, opts?)        -> { result, stdout, error }
 //   jsx(source, props?)           -> { html }
 //   markdown(src)                 -> { html }
 //   mermaid_parse(src)            -> { valid, diagramType?, error? }
 //   languages()                   -> manifest of the above
 //
 // Design notes:
-// - The wasm engines (picat, tla, minizinc, autolisp) are instantiated
+// - The wasm engines (picat, tla, minizinc, autolisp, lua) are instantiated
 //   FRESH on every call from the precompiled `__wasm_*` modules the server
 //   injects (--wasm-module). Nothing wasm-related is kept in globals, so
 //   heap snapshots taken after a call stay pure JS.
@@ -208,6 +209,62 @@
     return { result, output, svg };
   };
 
+  // ── Lua (wasmoon — Lua 5.4 wasm) ─────────────────────────────────────────
+  // The wasmoon UMD bundle (classes only) is evaluated once at bootstrap into
+  // globalThis.wasmoon; here we instantiate a FRESH Lua VM per call from the
+  // preloaded `__wasm_lua` module (served to wasmoon's Emscripten loader via
+  // the fetch shim + instantiateStreaming override installed in the bootstrap).
+  g.lua = async function lua(code, opts) {
+    if (typeof g.wasmoon === 'undefined') {
+      throw new Error(
+        'lua engine not loaded (wasmoon missing from bootstrap'
+        + (g.__LANG && g.__LANG.luaLoadError ? ': ' + g.__LANG.luaLoadError : '') + ')');
+    }
+    requireWasm('lua'); // surfaces a clear error if --wasm-module lua is absent
+    opts = opts || {};
+    const cmodule = await g.wasmoon.initWasmModule({
+      locateFile: () => 'https://__preloaded_lua__/glue.wasm',
+    });
+    const luaWasm = new g.wasmoon.LuaWasm(cmodule);
+    const engine = new g.wasmoon.LuaEngine(luaWasm, {
+      openStandardLibs: opts.openStandardLibs !== false,
+      injectObjects: false,
+      enableProxy: false,
+    });
+    let stdout = '';
+    // Capture Lua's own print()/io.write() (the build forbids Module.print, so
+    // redirect inside Lua using its native tostring for faithful formatting).
+    engine.global.set('__lua_emit', (s) => { stdout += s; });
+    try {
+      await engine.doString(
+        'local __e = __lua_emit\n'
+        + 'function print(...)\n'
+        + '  local n = select("#", ...)\n'
+        + '  local t = {}\n'
+        + '  for i = 1, n do t[i] = tostring((select(i, ...))) end\n'
+        + '  __e(table.concat(t, "\\t") .. "\\n")\n'
+        + 'end\n'
+        + 'if io and io.write then\n'
+        + '  io.write = function(...)\n'
+        + '    for _, v in ipairs({...}) do __e(tostring(v)) end\n'
+        + '  end\n'
+        + 'end\n'
+        + '__lua_emit = nil\n');
+      let result, error = null;
+      try {
+        result = await engine.doString(String(code));
+      } catch (e) {
+        error = String((e && e.message) || e);
+      }
+      let value;
+      try { value = JSON.parse(JSON.stringify(result === undefined ? null : result)); }
+      catch (_e) { value = String(result); }
+      return { result: value, stdout, error };
+    } finally {
+      try { engine.global.close(); } catch (_e) { /* best effort */ }
+    }
+  };
+
   // ── JSX (Babel transform + React server render) ─────────────────────────
   g.jsx = function jsx(source, props) {
     if (typeof g.Babel === 'undefined' || typeof g.React === 'undefined' || typeof g.ReactDOMServer === 'undefined') {
@@ -260,6 +317,7 @@
         tlaplus: 'await tlaplus(spec, opts?) -> checker result (inline ---- CONFIG ---- supported)',
         minizinc: 'await minizinc(model, {data?, args?}?) -> {status, solutions, statistics, stderr, exitCode}',
         autolisp: 'await autolisp(code) -> {result, output, svg}',
+        lua: 'await lua(code, opts?) -> {result, stdout, error}  (lua 5.4; result = returned value, stdout = print/io.write)',
         jsx: 'jsx(source, props?) -> {html}',
         markdown: 'markdown(src) -> {html}',
         mermaid_parse: 'await mermaid_parse(src) -> {valid, diagramType?, error?}',
@@ -269,6 +327,7 @@
         tla: typeof g.__wasm_tla !== 'undefined',
         minizinc: typeof g.__wasm_minizinc !== 'undefined',
         autolisp: typeof g.__wasm_autolisp !== 'undefined',
+        lua: typeof g.__wasm_lua !== 'undefined',
       },
     };
   };

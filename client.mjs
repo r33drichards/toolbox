@@ -257,7 +257,7 @@ export class McpClient {
 }
 
 /**
- * Loader prelude: makes the seven language helpers available in a run.
+ * Loader prelude: makes the eight language helpers available in a run.
  * The location may be an http(s) URL (fetched by the SERVER's runtime) or a
  * file path read through the policy-gated fs module. Default: the path baked
  * into the docker image.

@@ -11,6 +11,7 @@ REACT_VERSION=18.3.1
 MARKED_VERSION=11.1.1
 MERMAID_VERSION=9.4.3
 MINIZINC_VERSION=4.4.6
+WASMOON_VERSION=1.16.0
 ACADLISP_SHA=aa555bbe87f950ceceb8cb587c0735bc69aa2f23
 ACADLISP_HASH=86aa022a7657981b
 
@@ -41,6 +42,18 @@ if [ ! -s vendor/minizinc.wasm ]; then
     mv vendor/package/dist/minizinc.data vendor/minizinc.data
     mv vendor/package/dist/minizinc.wasm vendor/minizinc.wasm
     rm -rf vendor/package vendor/minizinc.tgz
+fi
+
+# Lua (wasmoon — Lua 5.4 compiled to wasm via Emscripten + JS wrapper)
+# Ships dist/index.js (UMD bundle: glue + LuaFactory/LuaEngine wrappers) and
+# dist/glue.wasm (the Lua VM). We vendor them as wasmoon.js and lua.wasm.
+if [ ! -s vendor/lua.wasm ]; then
+    echo "fetching wasmoon ${WASMOON_VERSION}"
+    curl -fsSL "https://registry.npmjs.org/wasmoon/-/wasmoon-${WASMOON_VERSION}.tgz" -o vendor/wasmoon.tgz
+    tar -xzf vendor/wasmoon.tgz -C vendor package/dist/index.js package/dist/glue.wasm
+    mv vendor/package/dist/index.js vendor/wasmoon.js
+    mv vendor/package/dist/glue.wasm vendor/lua.wasm
+    rm -rf vendor/package vendor/wasmoon.tgz
 fi
 
 # Picat + TLA+ wasm builds are vendored in this repo under engines/
