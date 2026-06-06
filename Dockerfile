@@ -1,5 +1,5 @@
-# toolbox — mcp-v8 (r33drichards/mcp-js) in HTTP MCP mode with seven
-# languages loaded: picat, tla+, minizinc, autolisp, jsx, markdown, mermaid.
+# toolbox — mcp-v8 (r33drichards/mcp-js) in HTTP MCP mode with eight
+# languages loaded: picat, tla+, minizinc, autolisp, lua, jsx, markdown, mermaid.
 #
 # Final image is FROM scratch: just the mcp-v8 binary, the glibc libraries
 # it links against, CA certs, and the language assets. No shell, no
@@ -66,7 +66,8 @@ RUN set -eux; \
 # Language assets
 COPY --from=gen /build/bootstrap.js /rootfs/opt/languages/bootstrap.js
 COPY --from=gen /build/vendor/picat.wasm /build/vendor/tla_checker.wasm \
-                /build/vendor/minizinc.wasm /build/vendor/acadlisp.wasm /rootfs/opt/languages/
+                /build/vendor/minizinc.wasm /build/vendor/acadlisp.wasm \
+                /build/vendor/lua.wasm /rootfs/opt/languages/
 COPY fetch.rego filesystem.rego /rootfs/opt/languages/
 RUN chown -R 1000:1000 /rootfs/opt/languages
 
@@ -93,4 +94,5 @@ ENTRYPOINT ["/usr/local/bin/mcp-v8", \
   "--wasm-module", "picat=/opt/languages/picat.wasm:512m", \
   "--wasm-module", "tla=/opt/languages/tla_checker.wasm:512m", \
   "--wasm-module", "minizinc=/opt/languages/minizinc.wasm:1g", \
-  "--wasm-module", "autolisp=/opt/languages/acadlisp.wasm:512m"]
+  "--wasm-module", "autolisp=/opt/languages/acadlisp.wasm:512m", \
+  "--wasm-module", "lua=/opt/languages/lua.wasm:512m"]
