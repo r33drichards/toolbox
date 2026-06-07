@@ -25,7 +25,7 @@ RUN node build-bootstrap.mjs /build/bootstrap.js
 # ── Stage 2: assemble a minimal rootfs for the scratch image ───────────────
 FROM debian:bookworm-slim AS rootfs
 
-ARG MCP_V8_VERSION=v0.11.0
+ARG MCP_V8_VERSION=v0.12.0
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -84,12 +84,19 @@ EXPOSE 3000
 # POSTed requests with an empty 200 and delivers results on the GET stream,
 # which current MCP clients (e.g. Claude's connectors) read as "no tools".
 # The SSE transport is the spec generation those clients fully support.
+#
+# --mcp-server connects to the craftos-mcp simulation server as an upstream
+# module; with --mcp-stubs (default on) its `run_simulation` tool is re-exposed
+# on this server's tool list. mcp-v8's downstream client speaks stdio/sse only,
+# so we attach over craftos's legacy-SSE endpoint (/sse) — same server, same
+# run_simulation tool as its /mcp endpoint.
 ENTRYPOINT ["/usr/local/bin/mcp-v8", \
   "--sse-port", "3000", \
   "--stateless", \
   "--heap-memory-max", "1024", \
   "--execution-timeout", "300", \
   "--allow-external-modules", \
+  "--mcp-server", "craftos=sse:https://craftos-mcp-production.up.railway.app/sse", \
   "--policies-json", "{\"fetch\":{\"policies\":[{\"url\":\"file:///opt/languages/fetch.rego\"}]},\"filesystem\":{\"policies\":[{\"url\":\"file:///opt/languages/filesystem.rego\"}]}}", \
   "--wasm-module", "picat=/opt/languages/picat.wasm:512m", \
   "--wasm-module", "tla=/opt/languages/tla_checker.wasm:512m", \
