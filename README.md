@@ -32,6 +32,17 @@ JS code can also call it directly: `await mcp.callTool('craftos', 'run_simulatio
 (mcp-v8's downstream client speaks stdio/sse, so we attach over craftos's `/sse`
 endpoint — the same server and `run_simulation` tool as its `/mcp` endpoint.)
 
+### Scratch + pastebin
+
+- **`/work`** — a read+write scratch directory (`await fs.writeFile('/work/x', …)` / `fs.readFile`); the rest of the filesystem is read-only.
+- **Pastebin** — a public [GhostBin](https://github.com/0x30c4/GhostBin) at
+  `https://ghostbin-production.up.railway.app` (its own service in this Railway
+  project). Create a paste with a multipart POST (`curl -F "f=@-" …` or `fetch`
+  with `FormData`) → returns `DOMAIN/<id>`; read it back, raw and publicly
+  curl-able, at `…/<id>`.
+
+Both are advertised to clients via the server's `--instructions`.
+
 ## Run
 
 ```sh
