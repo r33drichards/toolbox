@@ -40,8 +40,15 @@ endpoint — the same server and `run_simulation` tool as its `/mcp` endpoint.)
   project). Create a paste with a multipart POST (`curl -F "f=@-" …` or `fetch`
   with `FormData`) → returns `DOMAIN/<id>`; read it back, raw and publicly
   curl-able, at `…/<id>`.
+- **paste** ([`paste/`](paste/)) — a sibling service for **mutable, named
+  slots**: `PUT /<id>` overwrites in place, `GET /<id>` serves the raw bytes
+  (`Cache-Control: no-store`). Where GhostBin is an immutable output sink, this
+  is the editable companion — point a poller (e.g. a ComputerCraft turtle's
+  `http.get`) at `/<id>` and ship new code with one `curl -T file /<id>`.
+  Deploy as its own Railway service with a Volume at `/data`.
 
-Both are advertised to clients via the server's `--instructions`.
+GhostBin and `/work` are advertised to clients via the server's
+`--instructions`.
 
 ## Run
 
