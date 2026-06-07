@@ -25,7 +25,7 @@ RUN node build-bootstrap.mjs /build/bootstrap.js
 # ── Stage 2: assemble a minimal rootfs for the scratch image ───────────────
 FROM debian:bookworm-slim AS rootfs
 
-ARG MCP_V8_VERSION=v0.11.0
+ARG MCP_V8_VERSION=v0.12.0
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -48,7 +48,7 @@ RUN case "${TARGETARCH}" in \
 #  - CA certificates for outbound TLS
 #  - writable /tmp for the execution registry (sled)
 RUN set -eux; \
-    mkdir -p /rootfs/usr/local/bin /rootfs/etc/ssl/certs /rootfs/opt/languages /rootfs/tmp; \
+    mkdir -p /rootfs/usr/local/bin /rootfs/etc/ssl/certs /rootfs/opt/languages /rootfs/tmp /rootfs/work; \
     cp /mcp-v8 /rootfs/usr/local/bin/mcp-v8; \
     ldd /mcp-v8 | awk '$2 == "=>" {print $3} $1 ~ /^\// {print $1}' | sort -u | while read -r lib; do \
         mkdir -p "/rootfs$(dirname "$lib")"; cp "$lib" "/rootfs$lib"; \
@@ -61,7 +61,7 @@ RUN set -eux; \
     done; \
     echo 'hosts: files dns' > /rootfs/etc/nsswitch.conf; \
     cp /etc/ssl/certs/ca-certificates.crt /rootfs/etc/ssl/certs/ca-certificates.crt; \
-    chown -R 1000:1000 /rootfs/tmp /rootfs/opt/languages
+    chown -R 1000:1000 /rootfs/tmp /rootfs/opt/languages /rootfs/work
 
 # Language assets
 COPY --from=gen /build/bootstrap.js /rootfs/opt/languages/bootstrap.js
@@ -84,12 +84,19 @@ EXPOSE 3000
 # POSTed requests with an empty 200 and delivers results on the GET stream,
 # which current MCP clients (e.g. Claude's connectors) read as "no tools".
 # The SSE transport is the spec generation those clients fully support.
+#
+# --mcp-server connects to the craftos-mcp simulation server as an upstream
+# module; with --mcp-stubs (default on) its `run_simulation` tool is re-exposed
+# on this server's tool list. mcp-v8's downstream client speaks stdio/sse only,
+# so we attach over craftos's legacy-SSE endpoint (/sse) — same server, same
+# run_simulation tool as its /mcp endpoint.
 ENTRYPOINT ["/usr/local/bin/mcp-v8", \
   "--sse-port", "3000", \
   "--stateless", \
   "--heap-memory-max", "1024", \
   "--execution-timeout", "300", \
   "--allow-external-modules", \
+  "--mcp-server", "craftos=sse:https://craftos-mcp-production.up.railway.app/sse", \
   "--policies-json", "{\"fetch\":{\"policies\":[{\"url\":\"file:///opt/languages/fetch.rego\"}]},\"filesystem\":{\"policies\":[{\"url\":\"file:///opt/languages/filesystem.rego\"}]}}", \
   "--wasm-module", "picat=/opt/languages/picat.wasm:512m", \
   "--wasm-module", "tla=/opt/languages/tla_checker.wasm:512m", \

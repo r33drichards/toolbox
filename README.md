@@ -17,6 +17,21 @@ enabled everywhere** and eight language engines loaded into the runtime:
 
 `languages()` returns the manifest. All helpers return plain JSON objects.
 
+### Connected MCP server: craftos (ComputerCraft simulation)
+
+Beyond the in-image engines, toolbox connects to
+[**craftos-mcp**](https://github.com/r33drichards/craftos-mcp) as an upstream MCP
+module (`--mcp-server craftos=sse:https://craftos-mcp-production.up.railway.app/sse`).
+With `--mcp-stubs` (default on) its tool is re-exposed on this server:
+
+| tool | what |
+|---|---|
+| `runjs__craftos__run_simulation` | boot an arbitrary set of networked ComputerCraft computers and turtles (rednet, GPS, turtle fake-worlds) in an embedded CraftOS-PC emulator and return each node's output |
+
+JS code can also call it directly: `await mcp.callTool('craftos', 'run_simulation', { nodes: [...] })`.
+(mcp-v8's downstream client speaks stdio/sse, so we attach over craftos's `/sse`
+endpoint — the same server and `run_simulation` tool as its `/mcp` endpoint.)
+
 ## Run
 
 ```sh
@@ -46,7 +61,7 @@ claude mcp add --transport sse toolbox https://<your-domain>/sse
 Every execution is a fresh V8 isolate (stateless mode — see "why stateless"
 below). Load the languages at the top of a run with the one-line loader — the
 6.7MB bootstrap ships in the image and is read through the policy-gated `fs`
-module (read-only on `/opt/languages/`):
+module (read-only on `/opt/languages/`; read+write under `/work` for scratch):
 
 ```js
 (0, eval)(await fs.readFile('/opt/languages/bootstrap.js'));
@@ -92,7 +107,7 @@ concurrency.
 ```
 Dockerfile            three-stage: node (vendor+generate) → debian (rootfs assembly) → scratch
 fetch.rego            OPA policy: default allow = true  ("fetch anywhere")
-filesystem.rego       OPA policy: read-only fs access to /opt/languages/
+filesystem.rego       OPA policy: read-only /opt/languages/ + read+write /work scratch
 fetch-vendor.sh       pinned downloads (babel, react, marked, mermaid, minizinc, wasmoon/lua, acadlisp)
 engines/              vendored Picat + TLA+ wasm builds
 build-bootstrap.mjs   vendor/* + src/* → bootstrap.js (single eval-able script)

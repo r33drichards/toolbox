@@ -1,9 +1,14 @@
 package mcp.filesystem
 
-# Read-only access to the language assets (bootstrap.js); everything else
-# is denied. This is how executions load the bootstrap without a sidecar
-# HTTP server — `await fs.readFile('/opt/languages/bootstrap.js')`.
+# Read-only access to the language assets (bootstrap.js), plus a read+write
+# scratch area under /work. Everything else is denied. The bootstrap is loaded
+# without a sidecar HTTP server — `await fs.readFile('/opt/languages/bootstrap.js')`.
 default allow = false
+
+# Read + write scratch space under /work (all fs operations).
+allow if {
+    startswith(input.path, "/work")
+}
 
 allow if {
     input.operation == "readFile"
