@@ -8,6 +8,8 @@
 # On Railway, mount a Volume at /data — the filesystem is otherwise ephemeral
 # and slots vanish on redeploy. Build-time writes do NOT persist (volumes
 # mount at runtime only), so the empty /data baked here is just the mount point.
+# Runs as root: Railway mounts the volume root-owned, so a non-root user gets
+# "500 write error" on /data.
 
 # ── Stage 1: build a static binary ─────────────────────────────────────────
 FROM golang:1.23-bookworm AS build
@@ -15,16 +17,15 @@ WORKDIR /src
 COPY go.mod ./
 COPY main.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /paste .
-# create the data dir with the runtime uid so writes succeed under a volume
-RUN mkdir -p /data && chown -R 1000:1000 /data
+# /data is just the volume mount point; the app MkdirAll's it at runtime.
+RUN mkdir -p /data
 
 # ── Stage 2: scratch ───────────────────────────────────────────────────────
 FROM scratch
 COPY --from=build /paste /paste
-COPY --from=build --chown=1000:1000 /data /data
+COPY --from=build /data /data
 
 ENV DATA_DIR=/data \
     PORT=8080
 EXPOSE 8080
-USER 1000:1000
 ENTRYPOINT ["/paste"]
