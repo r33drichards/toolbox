@@ -48,7 +48,7 @@ RUN case "${TARGETARCH}" in \
 #  - CA certificates for outbound TLS
 #  - writable /tmp for the execution registry (sled)
 RUN set -eux; \
-    mkdir -p /rootfs/usr/local/bin /rootfs/etc/ssl/certs /rootfs/opt/languages /rootfs/tmp; \
+    mkdir -p /rootfs/usr/local/bin /rootfs/etc/ssl/certs /rootfs/opt/languages /rootfs/tmp /rootfs/work; \
     cp /mcp-v8 /rootfs/usr/local/bin/mcp-v8; \
     ldd /mcp-v8 | awk '$2 == "=>" {print $3} $1 ~ /^\// {print $1}' | sort -u | while read -r lib; do \
         mkdir -p "/rootfs$(dirname "$lib")"; cp "$lib" "/rootfs$lib"; \
@@ -61,7 +61,7 @@ RUN set -eux; \
     done; \
     echo 'hosts: files dns' > /rootfs/etc/nsswitch.conf; \
     cp /etc/ssl/certs/ca-certificates.crt /rootfs/etc/ssl/certs/ca-certificates.crt; \
-    chown -R 1000:1000 /rootfs/tmp /rootfs/opt/languages
+    chown -R 1000:1000 /rootfs/tmp /rootfs/opt/languages /rootfs/work
 
 # Language assets
 COPY --from=gen /build/bootstrap.js /rootfs/opt/languages/bootstrap.js

@@ -61,7 +61,7 @@ claude mcp add --transport sse toolbox https://<your-domain>/sse
 Every execution is a fresh V8 isolate (stateless mode — see "why stateless"
 below). Load the languages at the top of a run with the one-line loader — the
 6.7MB bootstrap ships in the image and is read through the policy-gated `fs`
-module (read-only on `/opt/languages/`):
+module (read-only on `/opt/languages/`; read+write under `/work` for scratch):
 
 ```js
 (0, eval)(await fs.readFile('/opt/languages/bootstrap.js'));
@@ -107,7 +107,7 @@ concurrency.
 ```
 Dockerfile            three-stage: node (vendor+generate) → debian (rootfs assembly) → scratch
 fetch.rego            OPA policy: default allow = true  ("fetch anywhere")
-filesystem.rego       OPA policy: read-only fs access to /opt/languages/
+filesystem.rego       OPA policy: read-only /opt/languages/ + read+write /work scratch
 fetch-vendor.sh       pinned downloads (babel, react, marked, mermaid, minizinc, wasmoon/lua, acadlisp)
 engines/              vendored Picat + TLA+ wasm builds
 build-bootstrap.mjs   vendor/* + src/* → bootstrap.js (single eval-able script)
