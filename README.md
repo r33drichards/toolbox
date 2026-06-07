@@ -35,19 +35,16 @@ endpoint — the same server and `run_simulation` tool as its `/mcp` endpoint.)
 ### Scratch + pastebin
 
 - **`/work`** — a read+write scratch directory (`await fs.writeFile('/work/x', …)` / `fs.readFile`); the rest of the filesystem is read-only.
-- **Pastebin** — a public [GhostBin](https://github.com/0x30c4/GhostBin) at
-  `https://ghostbin-production.up.railway.app` (its own service in this Railway
-  project). Create a paste with a multipart POST (`curl -F "f=@-" …` or `fetch`
-  with `FormData`) → returns `DOMAIN/<id>`; read it back, raw and publicly
-  curl-able, at `…/<id>`.
-- **paste** ([`paste/`](paste/)) — a sibling service for **mutable, named
-  slots**: `PUT /<id>` overwrites in place, `GET /<id>` serves the raw bytes
-  (`Cache-Control: no-store`). Where GhostBin is an immutable output sink, this
-  is the editable companion — point a poller (e.g. a ComputerCraft turtle's
-  `http.get`) at `/<id>` and ship new code with one `curl -T file /<id>`.
-  Deploy as its own Railway service with a Volume at `/data`.
+- **paste store** ([`paste/`](paste/)) — a sibling service for **mutable, named
+  slots** at `https://paste-production.up.railway.app` (its own service in this
+  Railway project). `PUT /<id>` (or `POST`) overwrites in place and echoes the
+  URL; `GET /<id>` serves the raw bytes (`Cache-Control: no-store`); `DELETE
+  /<id>` removes. Because a slot is overwritable at a stable URL, point a poller
+  (e.g. a ComputerCraft turtle's `http.get`) at `/<id>` and ship new code with
+  one `curl -T file /<id>`. Deploy as its own Railway service with a Volume at
+  `/data`.
 
-GhostBin and `/work` are advertised to clients via the server's
+The paste store and `/work` are advertised to clients via the server's
 `--instructions`.
 
 ## Run
