@@ -2,3 +2,6 @@
 vendor/
 bootstrap.js
 .DS_Store
+
+# git worktrees
+.worktrees/
