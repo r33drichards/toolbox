@@ -95,6 +95,7 @@ ENTRYPOINT ["/usr/local/bin/mcp-v8", \
   "--stateless", \
   "--heap-memory-max", "1024", \
   "--execution-timeout", "300", \
+  "--max-concurrent-executions", "100", \
   "--allow-external-modules", \
   "--instructions", "Sandboxed V8 JavaScript runtime (run_js) with fetch enabled everywhere and a READ+WRITE scratch directory at /work: persist files with await fs.writeFile('/work/x') and read them back with await fs.readFile('/work/x'); the rest of the filesystem is read-only on /opt/languages. Load language helpers once per run with (0,eval)(await fs.readFile('/opt/languages/bootstrap.js')) -> picat, tlaplus, minizinc, autolisp, lua, jsx, markdown, mermaid. The run_simulation tool boots networked ComputerCraft computers and turtles (rednet, GPS, turtle fake-worlds). A public pastebin is at https://ghostbin-production.up.railway.app -- create a paste with a multipart POST to / (form field 'f', e.g. fetch with FormData) which returns DOMAIN/<id>, and read it back (publicly curl-able, raw) at https://ghostbin-production.up.railway.app/<id>.", \
   "--mcp-server", "craftos=sse:https://craftos-mcp-production.up.railway.app/sse", \
